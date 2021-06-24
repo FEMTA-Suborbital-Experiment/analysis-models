@@ -8,5 +8,5 @@ Contains input files for use with SPARTA, as well as supplementary MATLAB script
 All MATLAB scripts and data pertaining to the virtual environment, for use with the [Simulation Box Software][3]
 
 [1]:https://github.com/FEMTA-Suborbital-Experiment/analysis-models/tree/main/DSMC "Go to directory"
-[2]:https://github.com/FEMTA-Suborbital-Experiment/FEMTA/tree/main/virtualenv     "Go to directory"
-[3]:https://github.com/FEMTA-Suborbital-Experiment/FEMTAFYESIMBOXsoftware         "Go to repository"
+[2]:https://github.com/FEMTA-Suborbital-Experiment/analysis-models/tree/main/virtualenv "Go to directory"
+[3]:https://github.com/FEMTA-Suborbital-Experiment/FEMTAFYESIMBOXsoftware "Go to repository"
