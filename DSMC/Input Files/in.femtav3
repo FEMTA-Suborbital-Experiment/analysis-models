@@ -1,0 +1,72 @@
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e20
+global		   cellmax 4500
+global		   surfmax 700
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.021 0 0.031 -0.09081 0.009761
+create_grid        100 100 100
+balance_grid       rcb cell
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+mixture            water H2O vstream 0 0 -378.2 temp 211.7 nrho 5.291e20
+
+#-----------------Surface, Water Read In and Definition of Boundaries-----#
+read_surf          femta.surf scale 0.002 0.002 0.002 clip
+
+region		   cathode cylinder z 0 0 0.0158 -0.05266 -0.08442
+group		   cathode_interior grid region cathode center
+
+region		   femta block -0.00175 0.00175 -0.000375 0.000375 -0.000001 0.000249
+group		   femtaArea grid region femta center
+
+surf_collide       1 diffuse 293.0 0.9
+surf_modify        all collide 1
+collide            vss water water.vss
+
+group		   femta surf id 354 355 
+fix                in emit/surf water femta normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           0.0001
+#adapt_grid         cathode_interior refine particle 30 50
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 100 c_press_temp[*] ave one
+dump               press_temp_dump grid all 100 all_press_temp.out xc yc zc f_press_temp_fix[1] f_press_temp_fix[2]
+
+#compute	   cathodePress thermal/grid cathode_interior water press
+#fix		   cathodePress_fix ave/grid cathode_interior 1 100 100 c_cathodePress[*]
+#dump		   cathodePress_dump grid cathode_interior 100 cathodePress.out xc yc zc f_cathodePress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 100 c_nrho[*] ave one
+dump               nrho_dump grid all 100 all_nrho.out xc yc zc f_nrho_fix[*]
+
+#----------------------------Surface IDs---------------------------------#
+dump		   surfaceIDs surf all 10000 surfIDs.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+#----------------------------Image Dump----------------------------------#
+dump               pressure_dump_image image water 100 cathode_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+
+#----------------------------Log File Edits------------------------------#
+stats              100
+stats_style        step npave nexit nexitave nscoll nscollave
+run                1000
+
+
+
+
+
+#----------------------------Steven Example-----------------------------#
+#compute	    temp thermal/grid all water temp press
+#fix		    temp ave/grid all 100 1000 c_temp[*] ave one
+#dump		    2 grid all 1000 temp.*.out xc yc zc f_temp[1] f_temp[2]

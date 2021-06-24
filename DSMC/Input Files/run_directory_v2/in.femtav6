@@ -1,0 +1,102 @@
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e3
+global		   cellmax 14000
+global		   surfmax 700
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.02542 0 0.031 -0.09339 0.009761
+create_grid        200 200 200
+balance_grid       rcb part
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+mixture            water H2O vstream 0 0 -438.3 temp 371.1 nrho 6.166e22
+#mixture            water H2O vstream 0 0 -378.2 temp 310 nrho 5.291e20
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+read_surf	   femtav3.surf scale 0.002 0.002 0.002 clip group femtaSurf typeadd 1
+read_surf	   surfCathode.surf scale 0.002 0.002 0.002 trans 0 0 -0.0762 clip group mainCathode
+
+#region		   cavity block 0 0.001 0 0.0001 -0.01 0
+#group		   cavityGroup grid region cavity one 
+
+region		   cathode_region block 0 0.02542 0 0.031 -0.09067 -0.0347
+group		   cathode_group grid region cathode_region center
+
+# defines region right in front of femta nozzle to refine grid for thrust calcs #
+region		   femta block 0 0.00028 0 0.000001 -1.968504e-05 0
+#group		   femta_group grid region femta center
+
+#exahust cavity grid reinment area = ex. cavity region (interm,eCavity) - femta region (see above)
+region		   eCavity block 0 0.001 0 0.0001 -0.0024 0
+group		   interm grid region eCavity center
+#group		   exahustC_group grid subtract interm femta_group all
+
+surf_collide   	   1 diffuse 293.0 0.9
+surf_modify    	   all collide 1
+collide        	   vss water water.vss
+
+#femta region is box right in front of where nozzles are, this takes this region and makes a group of surfaces elements in it (should only be onemitting points since it touches that part)
+group		   emit surf region femta center 
+
+# old way that matlab script can help on now. Note we will need to do a "dry run" to get all the new surface files after clipping for this to work
+#group		   emit surf id 4 8 16 20 28 32 40 44 52 56 64 68 76 80 88 92 100 104 112 116 124 128 136 140 148 152 160 164 172 176
+fix            	   in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-7
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 2500 c_press_temp[*] ave one
+dump               press_temp_dump grid all 2500 allPressTemp.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 2500 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 2500 cathodePressTemp.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid interm water press temp
+fix                femtaPress_fix ave/grid interm 1 100 2500 c_femtaPress[*] ave one
+dump               femtaPress_dump grid interm 2500 femtaPressTemp.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 2500 c_nrho[*] ave one
+dump               nrho_dump grid all 2500 allNrho.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 2500 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 2500 cathodeNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid interm water n u v w nrho
+fix                femtaNrho_fix ave/grid interm 1 100 2500 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid interm 2500 femtaNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+fix		   allGrid_adapt adapt 100 all refine particle 30 50 region eCavity all region cathode_region all region femta all  
+#fix                cathodeGrid_adapt adapt 100 cathode_group refine particle 30 50 region cathode_region all 
+#fix                femtaGrid_adapt adapt 100 interm refine particle 30 50 region eCavity all
+#adapt_grid	   cavityGroup refine surf all 0.0000001 iterate 50 dir 0 0 -1 
+#compute		   calcCathParticles grid cathode_group water n
+#fix		   cParticleCount ave/grid cathode_group 10 50 500 c_calcCathParticles[*] ave one 
+#fix		   cath adapt 500 cathode_group refine particle 60 30
+
+#----------------------------Image Dump----------------------------------#
+dump               pressure_dump_image image water 100 cathode_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+
+#----------------------------Check Emitting Surface IDs------------------#
+#dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+
+#----------------------------Log File Edits------------------------------#
+stats              100
+stats_style        step np npave nexit nexitave nscoll nscollave nsplit nchild
+run                50000
+
+ 

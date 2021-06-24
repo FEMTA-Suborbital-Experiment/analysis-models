@@ -1,0 +1,161 @@
+SPARTA (16 Apr 2019)
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e3
+global		   cellmax 4500
+global		   surfmax 700
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.02542 0 0.031 -0.09339 0.009761
+Created orthogonal box = (0 0 -0.09339) to (0.02542 0.031 0.009761)
+create_grid        60 60 60
+Created 216000 child grid cells
+  parent cells = 1
+  CPU time = 0.161971 secs
+  create/ghost percent = 20.6093 79.3907
+balance_grid       rcb part
+Balance grid migrated 0 cells
+  CPU time = 0.0869721 secs
+  reassign/sort/migrate/ghost percent = 22.9487 1.94595 8.93955 66.1658
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+mixture            water H2O vstream 0 0 -378.2 temp 310 nrho 5.291e20
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+read_surf          surfFemta.surf scale 0.002 0.002 0.002 clip group femtaSurf typeadd 1
+  236 points
+  468 triangles
+  clipped to 97 points
+  clipped to 151 tris
+  0 0.02 xlo xhi
+  0 0.03 ylo yhi
+  -0.000249 0.009751 zlo zhi
+  1e-06 min triangle edge length
+  1e-12 min triangle area
+  6088 = cells with surfs
+  10186 = total surfs in all grid cells
+  22 = max surfs in one grid cell
+  0.000581672 = min surf-size/cell-size ratio
+  0 0 = number of pushed cells
+  6088 0 = cells overlapping surfs, overlap cells with unmarked corner pts
+  199008 10904 6088 = cells outside/inside/overlapping surfs
+  6088 = surf cells with 1,2,etc splits
+  7.52852e-05 7.52852e-05 = cell-wise and global flow volume
+  CPU time = 0.151288 secs
+  read/check/sort/surf2grid/ghost/inout/particle percent = 5.90407 0.0998769 6.13064 49.5534 38.312 21.6988 0.000214843
+  surf2grid time = 0.0749683 secs
+  map/rvous1/rvous2/split percent = 21.6982 42.0216 0.000441013 33.6294
+read_surf	   surfCathode.surf scale 0.002 0.002 0.002 trans 0 0 -0.0762 clip
+  976 points
+  1948 triangles
+  clipped to 398 points
+  clipped to 622 tris
+  0 0.0175272 xlo xhi
+  0 0.017446 ylo yhi
+  -0.0907945 -0.0526945 zlo zhi
+  8.12074e-05 min triangle edge length
+  3.02032e-09 min triangle area
+  11163 = cells with surfs
+  30032 = total surfs in all grid cells
+  74 = max surfs in one grid cell
+  0.000581672 = min surf-size/cell-size ratio
+  0 0 = number of pushed cells
+  11163 0 = cells overlapping surfs, overlap cells with unmarked corner pts
+  188620 16217 11163 = cells outside/inside/overlapping surfs
+  11163 = surf cells with 1,2,etc splits
+  7.24491e-05 7.24491e-05 = cell-wise and global flow volume
+  CPU time = 0.225768 secs
+  read/check/sort/surf2grid/ghost/inout/particle percent = 5.63151 0.262764 4.15398 58.6327 31.319 16.7865 0.000202544
+  surf2grid time = 0.132374 secs
+  map/rvous1/rvous2/split percent = 17.805 25.6019 0.000346148 54.7562
+#read_surf	   femta.surf scale 0.002 0.002 0.002 clip
+
+region		   cathode_region block 0 0.02542 0 0.031 -0.09067 -0.0347
+group		   cathode_group grid region cathode_region center
+115200 grid cells in group cathode_group
+
+region		   femta block 0 0.001 0 0.0001 -0.00024 0
+group		   femta_group grid region femta center
+0 grid cells in group femta_group
+
+surf_collide       1 diffuse 293.0 0.9
+surf_modify        all collide 1
+collide            vss water water.vss
+
+group		   emit surf id 54 145 151
+3 surfaces in group emit
+fix                in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-7
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 2500 c_press_temp[*] ave one
+dump               press_temp_dump grid all 2500 allPressTemp.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 2500 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 2500 cathodePressTemp.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid femta_group water press temp
+fix                femtaPress_fix ave/grid femta_group 1 100 2500 c_femtaPress[*] ave one
+dump               femtaPress_dump grid femta_group 2500 femtaPressTemp.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 2500 c_nrho[*] ave one
+dump               nrho_dump grid all 2500 allNrho.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 2500 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 2500 cathodeNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid femta_group water n u v w nrho
+fix                femtaNrho_fix ave/grid femta_group 1 100 2500 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid femta_group 2500 femtaNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+#fix                cathodeGrid_adapt adapt 1000 cathode_group refine particle 10 100
+fix                femtaGrid_adapt adapt 100 cathode_group refine particle 30 50
+
+#----------------------------Image Dump----------------------------------#
+dump               pressure_dump_image image water 2500 cathode_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+
+#----------------------------Check Emitting Surface IDs------------------#
+#dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+
+#----------------------------Log File Edits------------------------------#
+stats              100
+stats_style        step np npave nexit nexitave nscoll nscollave nsplit nchild
+run                50000
+Memory usage per proc in Mbytes:
+  particles (ave,min,max) = 0 0 0
+  grid      (ave,min,max) = 39.3466 39.3466 39.3466
+  surf      (ave,min,max) = 0.0914116 0.0914116 0.0914116
+  total     (ave,min,max) = 128.427 128.427 128.427
+Step Np Npave Nexit Nexitave Nscoll Nscollave Nsplit Nchild 
+       0        0            0        0            0        0            0        0   216000 
+     100  4335934    2189650.1        0            0     6013       5112.5        0   216000 
+     200  8671399    4357584.7       38         2.24     6093      5571.65        0   216000 
+     300 12965922    6521654.8     1146    139.46667     6005    5730.2667        0   217330 
+     400 17011514    8652298.7     4965      830.425     6207    5819.2775        0   259610 
+     500 20574397     10694767    10467     2210.416     6725     5935.016        0   362853 
+     600 23581361     12604271    15969    4056.9233     7754      6141.75        0   499724 
+     700 26075807     14360644    20684    6108.0486     9028    6450.8243        0   644043 
+     800 28145721     15962516    24589    8177.0775    10547    6856.4062        0   809397 
+     900 29884769     17419443    27234    10153.929    12186    7338.3222        0   926430 
+    1000 31364785     18745394    29403     11994.45    13281     7873.899        0  1047628 
+    1100 32651294     19955661    31268    13676.241    14870    8447.1427        0  1196917 
+    1200 33791903     21065160    32733     15199.31    16378    9044.5942        0  1423108 
+    1300 34816196     22087045    33625    16577.532    17593    9656.0969        0  1759360 
+    1400 35752212     23032966    34462    17821.919    18903     10274.37        0  2125866 
+    1500 36614786     23912600    34865     18949.36    20258     10894.04        0  2382311 
+    1600 37420536     24734392    35469    19971.384    21330    11512.611        0  2505910 
+    1700 38178003     25505499    36210    20901.571    22686    12123.976     

@@ -1,0 +1,10 @@
+clear
+clc
+all_data=load("femtaGeometry.surf");
+x=all_data(:,2);
+y=all_data(:,3);
+z=all_data(:,4);
+scatter3(x,y,z)
+xlabel("x")
+ylabel("y")
+zlabel("z")

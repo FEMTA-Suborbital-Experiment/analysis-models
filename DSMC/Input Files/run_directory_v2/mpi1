@@ -1,0 +1,3 @@
+#!/bin/sh
+module load openmpi
+./spa_mpi < in.femtav6 

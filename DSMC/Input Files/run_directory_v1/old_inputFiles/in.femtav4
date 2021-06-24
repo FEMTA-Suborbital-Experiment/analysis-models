@@ -1,0 +1,86 @@
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e5
+global		   cellmax 4500
+global		   surfmax 700
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.021 0 0.031 -0.09081 0.009761
+create_grid        50 50 50
+balance_grid       rcb cell
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+mixture            water H2O vstream 0 0 -378.2 temp 298 nrho 5.291e20
+
+#-----------------Surface, Water Read In and Definition of Boundaries-----#
+read_surf          femta.surf scale 0.002 0.002 0.002 clip
+
+region		   cathode_region block 0 0.021 0 0.021 -0.09081 -0.04
+group		   cathode_group grid region cathode_region center
+
+region		   femta block 0 0.021 0 0.031 -0.0024 0
+group		   femta_group grid region femta center
+
+surf_collide       1 diffuse 293.0 0.9
+surf_modify        all collide 1
+collide            vss water water.vss
+
+group		   emit surf id 54 580 644 
+fix                in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-7
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 1000 c_press_temp[*] ave one
+dump               press_temp_dump grid all 1000 allPressTemp.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 1000 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 1000 cathodePressTemp.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid femta_group water press temp
+fix                femtaPress_fix ave/grid femta_group 1 100 1000 c_femtaPress[*] ave one
+dump               femtaPress_dump grid femta_group 1000 femtaPressTemp.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 1000 c_nrho[*] ave one
+dump               nrho_dump grid all 1000 allNrho.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 1000 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 1000 cathodeNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid femta_group water n u v w nrho
+fix                femtaNrho_fix ave/grid femta_group 1 100 1000 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid femta_group 1000 femtaNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+fix                cathodeGrid_adapt adapt 1000 cathode_group refine particle 10 100
+fix                femtaGrid_adapt adapt 1000 femta_group refine value f_femtaNrho_fix[4] 10 100
+
+#----------------------------Image Dump----------------------------------#
+dump               pressure_dump_image image water 2500 cathode_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+#dump		    surf_dump surf all 10000 surfIDs2.out id v1x v1y v1z
+
+#----------------------------Log File Edits------------------------------#
+stats              100
+stats_style        step np npave nexit nexitave nscoll nscollave nsplit nchild
+run                50000
+
+
+
+
+
+#----------------------------Steven Example-----------------------------#
+#compute	    temp thermal/grid all water temp press
+#fix		    temp ave/grid all 100 1000 c_temp[*] ave one
+#dump		    2 grid all 1000 temp.*.out xc yc zc f_temp[1] f_temp[2]

@@ -1,0 +1,41 @@
+#----------------Global Settings----------------------------#
+seed                12345
+dimension           3
+units               si
+boundary            ro ro oo
+echo                log
+#----------------Global BCs---------------------------------#
+global               fnum 1.0e11
+global               cellmax 5000
+#----------------Box and Grid Creation----------------------#
+create_box          0 0.021 0 0.031 -0.09081 0.009761
+create_grid         50 50 50
+#----------------Working Fluid------------------------------#
+species             water.species H2O
+mixture             water H2O vstream 0 0 -378.2 temp 211.7 nrho 5.291e20
+#----------------Surface, Water Read In and Definition of Boundaries---------#
+read_surf           femta.surf scale 0.002 0.002 0.002 clip
+region              cathodeface cylinder z 0 0 0.0158 -0.05266 -0.08442
+region              femta_region block -0.00175 0.00175 -0.000375 0.000375 -0.000001 0.000249
+group               cathode_interior grid region cathodeface center
+region              centerline block -1 1 -15 15 -4.8755 4.8755
+surf_collide        1 diffuse 293.0 0.9
+collide             vss water water.vss
+group               femtaArea grid region femta_region center
+group               femta surf id 354 355
+surf_modify         all collide 1
+fix                 in emit/surf water femta
+#----------------Executable Run-----------------------------#
+timestep            0.0001
+compute             numParticles count water
+dump                cells grid all 100 cells.out xc yc zc
+#dump               nrho_dump grid all 1000 numberDensity.out c_numParticles
+#compute            pressure_cathode surf cathode_grid water press
+compute             pressure_all surf all all press
+dump                pressure_dump_image image water 100 cathode_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+#dump               pressure_dump_all grid all 100 all_pressure.out c_pressure_all
+#dump               pressure_dump surf cathodeface 100 cathode_pressure.out c_pressure_cathode
+stats_style         step npave
+stats               100
+stats_style         nexit nexitave nscoll nscollave
+run                 1000
