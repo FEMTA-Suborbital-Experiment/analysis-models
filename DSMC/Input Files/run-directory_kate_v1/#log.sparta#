@@ -1,0 +1,503 @@
+SPARTA (6 Jul 2020)
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e5
+global		   cellmax 14000
+global		   surfmax 700
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.02542 0 0.031 -0.09339 0.009761
+Created orthogonal box = (0 0 -0.09339) to (0.02542 0.031 0.009761)
+create_grid        250 250 250 #261 261 261
+Created 15625000 child grid cells
+  parent cells = 1
+  CPU time = 12.9739 secs
+  create/ghost percent = 15.6596 84.3404
+balance_grid       rcb part
+Balance grid migrated 0 cells
+  CPU time = 7.45681 secs
+  reassign/sort/migrate/ghost percent = 26.8269 1.61316 12.133 59.4269
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+mixture            water H2O vstream 0 0 -438.3 temp 371.1 nrho 6.166e22
+#mixture            water H2O vstream 0 0 -378.2 temp 310 nrho 5.291e20
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+read_surf	   femtav3.surf scale 0.002 0.002 0.002 clip group femtaSurf typeadd 1
+  452 points
+  900 triangles
+  clipped to 382 tris
+  0 0.02 xlo xhi
+  0 0.03 ylo yhi
+  -0.003249 0.006751 zlo zhi
+  4.7e-09 min triangle edge length
+  5.5749e-17 min triangle area
+  105674 = cells with surfs
+  132153 = total surfs in all grid cells
+  102 = max surfs in one grid cell
+  1.13911e-05 = min surf-size/cell-size ratio
+  0 0 = number of pushed cells
+  105674 0 = cells overlapping surfs, overlap cells with unmarked corner pts
+WARNING: Surface check found 299 points nearly on triangles (../surf.cpp:1658)
+  14434838 1084488 105674 = cells outside/inside/overlapping surfs
+  105674 = surf cells with 1,2,etc splits
+  7.52945e-05 7.52945e-05 = cell-wise and global flow volume
+  CPU time = 10.1908 secs
+  read/check/sort/surf2grid/ghost/inout/particle percent = 0.0124248 0.00346411 8.44822 47.779 43.7569 39.2312 3.71037e-06
+  surf2grid time = 4.86907 secs
+  map/rvous1/rvous2/split percent = 21.016 58.4534 5.56605e-06 16.3611
+read_surf	   surfCathode.surf scale 0.002 0.002 0.002 trans 0 0 -0.0762 clip group mainCathode
+  976 points
+  2330 triangles
+  clipped to 622 tris
+  0 0.0175272 xlo xhi
+  0 0.017446 ylo yhi
+  -0.0907945 -0.0526945 zlo zhi
+  8.12074e-05 min triangle edge length
+  3.02032e-09 min triangle area
+  194554 = cells with surfs
+  281335 = total surfs in all grid cells
+  102 = max surfs in one grid cell
+  1.13911e-05 = min surf-size/cell-size ratio
+  0 0 = number of pushed cells
+  194554 0 = cells overlapping surfs, overlap cells with unmarked corner pts
+WARNING: Surface check found 299 points nearly on triangles (../surf.cpp:1658)
+  13852101 1578345 194554 = cells outside/inside/overlapping surfs
+  194554 = surf cells with 1,2,etc splits
+  7.24584e-05 7.24584e-05 = cell-wise and global flow volume
+  CPU time = 10.6007 secs
+  read/check/sort/surf2grid/ghost/inout/particle percent = 0.0241742 0.00660488 7.79299 50.7435 41.4327 42.7699 2.67957e-06
+  surf2grid time = 5.37917 secs
+  map/rvous1/rvous2/split percent = 21.6041 54.2669 6.59644e-06 20.313
+
+#region		   cavity block 0 0.001 0 0.0001 -0.01 0
+#group		   cavityGroup grid region cavity one
+
+region		   cathode_region block 0 0.02542 0 0.031 -0.09067 -0.0347
+group		   cathode_group grid region cathode_region center
+8437500 grid cells in group cathode_group
+
+# defines region right in front of femta nozzle to refine grid for thrust calcs #
+region		   femta block 0 0.00028 0 0.000001 -1.968504e-05 0
+#group		   femta_group grid region femta center
+
+#exahust cavity grid reinment area = ex. cavity region (interm,eCavity) - femta region (see above)
+region		   eCavity block 0 0.0001 0 0.0005 -0.0012 0
+group		   interm grid region eCavity center
+12 grid cells in group interm
+group		   unused_domain grid subtract all interm cathode_group
+7187488 grid cells in group unused_domain
+
+surf_collide   	   1 diffuse 293.0 0.9
+surf_modify    	   all collide 1
+collide        	   vss water water.vss
+
+#femta region is box right in front of where nozzles are, this takes this region and makes a group of surfaces elements in it (should only be onemitting points since it touches that part)
+#group		   emit surf region femta center
+
+# old way that matlab script can help on now. Note we will need to do a "dry run" to get all the new surface files after clipping for this to work
+group		   emit surf id 271 273 280 281 285 286 291 292 295 296 300 301 306 307 308 309 329 368 370 372 375 376 378 381 382
+25 surfaces in group emit
+fix            	   in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-7
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 10000 c_press_temp[*] ave one
+dump               press_temp_dump grid all 10000 allPressTemp.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 10000 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 10000 cathodePressTemp.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid interm water press temp
+fix                femtaPress_fix ave/grid interm 1 100 10000 c_femtaPress[*] ave one
+dump               femtaPress_dump grid interm 10000 femtaPressTemp.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 10000 c_nrho[*] ave one
+dump               nrho_dump grid all 10000 allNrho.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 10000 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 10000 cathodeNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid interm water n u v w nrho
+fix                femtaNrho_fix ave/grid interm 1 100 100 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid interm 100 femtaNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+compute 	   test grid interm water n
+
+compute            sumtest reduce sum c_test[1]
+compute            avetest reduce ave c_test[1]
+compute            maxtest reduce max c_test[1]
+compute            mintest reduce min c_test[1]
+
+adapt_grid         interm refine coarsen particle 600 10 cells 3 3 3
+Adapting grid ...
+  no grid adaptation performed
+
+#fix                test_adapt adapt 1 interm refine coarsen particle 600 10 cells 3 3 3
+#fix                test_adapt adapt 1 interm refine coarsen value c_test[1] 600 10 thresh more less cells 2 2 2
+
+#fix                domainGrid_adapt adapt 10 unused_domain refine coarsen particle 1 100  #particle 1 1e5
+#fix                cathodeGrid_adapt adapt 10 cathode_group refine particle 50 10 region cathode_region all
+#fix                femtaGrid_adapt adapt 10 interm refine particle 50 10 region eCavity all
+#adapt_grid	    cavityGroup refine surf all 0.0000001 iterate 50 dir 0 0 -1
+#compute            calcCathParticles grid cathode_group water n
+#fix		    cParticleCount ave/grid cathode_group 10 50 500 c_calcCathParticles[*] ave one
+#fix		    cath adapt 500 cathode_group refine particle 60 30
+
+#----------------------------Image Dump----------------------------------#
+dump               particle_image image water 2500 particle_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+dump		   grid_image image water 2500 grid_image.*.ppm type type particle no grid proc
+
+
+#write_restart     restart.*
+#----------------------------Check Emitting Surface IDs------------------#
+#dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+
+#----------------------------Log File Edits------------------------------#
+stats              1
+stats_style        step np npave nexit nexitave nscoll nscollave nparent nchild nsplit c_sumtest c_avetest c_maxtest c_mintest
+
+#run                500 #50000
+
+run 50000 start 0 stop 50000 every 100 "adapt_grid interm refine coarsen particle 30 50 cells 3 3 3"
+Memory usage per proc in Mbytes:
+  particles (ave,min,max) = 0 0 0
+  grid      (ave,min,max) = 2744.35 2744.35 2744.35
+  surf      (ave,min,max) = 0.126389 0.126389 0.126389
+  total     (ave,min,max) = 13234.9 13234.9 13234.9
+Step Np Npave Nexit Nexitave Nscoll Nscollave Nparent Nchild Nsplit c_sumtest c_avetest c_maxtest c_mintest 
+       0        0            0        0            0        0            0        1 15625000        0            0            0            0            0 
+       1      543          543        0            0        0            0        1 15625000        0            1      6.4e-08            1            0 
+       2     1088        815.5        0            0        0            0        1 15625000        0           84    5.376e-06           80            0 
+       3     1629    1086.6667        0            0        7    2.3333333        1 15625000        0          291   1.8624e-05          247            0 
+       4     2170       1357.5        0            0       45           13        1 15625000        0          483   3.0912e-05          371            0 
+       5     2712       1628.4        0            0       47         19.8        1 15625000        0          653   4.1792e-05          427            0 
+       6     3257    1899.8333        0            0       76    29.166667        1 15625000        0          834   5.3376e-05          499            0 
+       7     3803    2171.7143        0            0       71    35.142857        1 15625000        0          971   6.2144e-05          529            0 
+       8     4346       2443.5        0            0      101       43.375        1 15625000        0         1094   7.0016e-05          560            0 
+       9     4892    2715.5556        0            0       86    48.111111        1 15625000        0         1219   7.8016e-05          592            0 
+      10     5439       2987.9        0            0      106         53.9        1 15625000        0         1298   8.3072e-05          612            0 
+      11     5981         3260        0            0      118    59.727273        1 15625000        0         1374   8.7936e-05          619            0 
+      12     6522    3531.8333        0            0      130    65.583333        1 15625000        0         1435    9.184e-05          621            0 
+      13     7067    3803.7692        0            0      140    71.307692        1 15625000        0         1467   9.3888e-05          592            0 
+      14     7608       4075.5        0            0      158         77.5        1 15625000        0         1499   9.5936e-05          595            0 
+      15     8149    4347.0667        0            0      162    83.133333        1 15625000        0         1519   9.7216e-05          591            0 
+      16     8696     4618.875        0            0      165        88.25        1 15625000        0         1582  0.000101248          620            0 
+      17     9239    4890.6471        0            0      172    93.176471        1 15625000        0         1593  0.000101952          643            0 
+      18     9780    5162.2778        0            0      183    98.166667        1 15625000        0         1630   0.00010432          645            0 
+      19    10325         5434        0            0      172    102.05263        1 15625000        0         1679  0.000107456          644            0 
+      20    10867      5705.65        0            0      194       106.65        1 15625000        0         1694  0.000108416          640            0 
+      21    11410    5977.2857        0            0      201    111.14286        1 15625000        0         1743  0.000111552          668            0 
+      22    11952    6248.8636        0            0      231    116.59091        1 15625000        0         1729  0.000110656          665            0 
+      23    12494    6520.3913        0            0      225    121.30435        1 15625000        0         1731  0.000110784          658            0 
+      24    13036     6791.875        0            0      251    126.70833        1 15625000        0         1735   0.00011104          660            0 
+      25    13577      7063.28        0            0      235       131.04        1 15625000        0         1744  0.000111616          666            0 
+      26    14118    7334.6154        0            0      286          137        1 15625000        0         1735   0.00011104          642            0 
+      27    14658    7605.8519        0            0      294    142.81481        1 15625000        0         1789  0.000114496          663            0 
+      28    15201    7877.1071        0            0      270    147.35714        1 15625000        0         1802  0.000115328          712            0 
+      29    15744    8148.3793        0            0      283    152.03448        1 15625000        0         1857  0.000118848          742            0 
+      30    16287    8419.6667        0            0      320    157.63333        1 15625000        0         1886  0.000120704          733            0 
+      31    16831         8691        0            0      320    162.87097        1 15625000        0         1920   0.00012288          732            0 
+      32    17373    8962.3125        0            0      370    169.34375        1 15625000        0         1928  0.000123392          735            0 
+      33    17912    9233.5152        0            0      338    174.45455        1 15625000        0         1912  0.000122368          699            0 
+      34    18454    9504.7059        0            0      350    179.61765        1 15625000        0         1909  0.000122176          702            0 
+      35    18995    9775.8571        0            0      372    185.11429        1 15625000        0         1891  0.000121024          661            0 
+      36    19536    10046.972        0            0      364    190.08333        1 15625000        0         1931  0.000123584          691            0 
+      37    20078    10318.081        0            0      389    195.45946        1 15625000        0         1899  0.000121536          668            0 
+      38    20621    10589.211        0            0      387        200.5        1 15625000        0         1902  0.000121728          673            0 
+      39    21163    10860.333        0            0      403    205.69231        1 15625000        0         1919  0.000122816          701            0 
+      40    21708    11131.525        0            0      413      210.875        1 15625000        0         1963  0.000125632          693            0 
+      41    22251    11402.732        0            0      410    215.73171        1 15625000        0         1952  0.000124928          720            0 
+      42    22794    11673.952        0            0      413    220.42857        1 15625000        0         1963  0.000125632          709            0 
+      43    23338    11945.209        0            0      405    224.72093        1 15625000        0         1975    0.0001264          719            0 
+      44    23883    12216.523        0            0      467    230.22727        1 15625000        0         1984  0.000126976          729            0 
+      45    24428    12487.889        0            0      428    234.62222        1 15625000        0         1998  0.000127872          740            0 
+      46    24970    12759.239        0            0      442    239.13043        1 15625000        0         2030   0.00012992          742            0 
+      47    25513    13030.596        0            0      452    243.65957        1 15625000        0         2047  0.000131008          730            0 
+      48    26056    13301.958        0            0      481    248.60417        1 15625000        0         1989  0.000127296          700            0 
+      49    26599    13573.327        0            0      476     253.2449        1 15625000        0         1978  0.000126592          738            0 
+      50    27140     13844.66        0            0      473       257.64        1 15625000        0         1940   0.00012416          721            0 
+      51    27684     14116.02        0            0      497    262.33333        1 15625000        0         1931  0.000123584          702            0 
+      52    28225    14387.346        0            0      513    267.15385        1 15625000        0         1915   0.00012256          689            0 
+      53    28768    14658.679        0            0      475    271.07547        1 15625000        0         1915   0.00012256          686            0 
+      54    29310        14930        0            0      511    275.51852        1 15625000        0         1955   0.00012512          698            0 
+      55    29856    15201.382        0            0      502    279.63636        1 15625000        0         1955   0.00012512          711            0 
+      56    30397    15472.732        0            0      563    284.69643        1 15625000        0         1956  0.000125184          697            0 
+      57    30940    15744.088        0            0      549    289.33333        1 15625000        0         1923  0.000123072          662            0 
+      58    31487    16015.517        0            0      571    294.18966        1 15625000        0         1936  0.000123904          683            0 
+      59    32031    16286.966        0            0      527    298.13559        1 15625000        0         1978  0.000126592          702            0 
+      60    32577    16558.467        0            0      542        302.2        1 15625000        0         1999  0.000127936          717            0 
+      61    33119    16829.951        0            0      531    305.95082        1 15625000        0         1998  0.000127872          699            0 
+      62    33660    17101.403        0            0      521    309.41935        1 15625000        0         2012  0.000128768          715            0 
+      63    34201    17372.825        0            0      616    314.28571        1 15625000        0         2022  0.000129408          708            0 
+      64    34744     17644.25        0            0      590    318.59375        1 15625000        0         1988  0.000127232          683            0 
+      65    35285    17915.646        0            0      572    322.49231        1 15625000        0         1998  0.000127872          705            0 
+      66    35828    18187.045        0            0      598    326.66667        1 15625000        0         1975    0.0001264          707            0 
+      67    36369    18458.418        0            0      554     330.0597        1 15625000        0         1967  0.000125888          716            0 
+      68    36910    18729.765        0            0      602    334.05882        1 15625000        0         2018  0.000129152          715            0 
+      69    37454     19001.13        0            0      653    338.68116        1 15625000        0         1986  0.000127104          717            0 
+      70    37994    19272.457        0            0      621    342.71429        1 15625000        0         1984  0.000126976          727            0 
+      71    38540    19543.831        0            0      629    346.74648        1 15625000        0         1995   0.00012768          736            0 
+      72    39081    19815.181        0            0      610    350.40278        1 15625000        0         1981  0.000126784          714            0 
+      73    39624    20086.534        0            0      654    354.56164        1 15625000        0         1995   0.00012768          737            0 
+      74    40163    20357.838        0            0      646        358.5        1 15625000        0         2014  0.000128896          715            0 
+      75    40705    20629.133        0            0      610    361.85333        1 15625000        0         2023  0.000129472          719            0 
+      76    41247    20900.421        0            0      611    365.13158        1 15625000        0         2011  0.000128704          703            0 
+      77    41787    21171.675        0            0      622    368.46753        1 15625000        0         2010   0.00012864          687            0 
+      78    42329    21442.923        0            0      649     372.0641        1 15625000        0         2011  0.000128704          704            0 
+      79    42873     21714.19        0            0      700    376.21519        1 15625000        0         1952  0.000124928          704            0 
+      80    43417    21985.475        0            0      646     379.5875        1 15625000        0         1977  0.000126528          724            0 
+      81    43961    22256.778        0            0      684    383.34568        1 15625000        0         2018  0.000129152          742            0 
+      82    44503    22528.073        0            0      688    387.06098        1 15625000        0         2008  0.000128512          728            0 
+      83    45051    22799.434        0            0      683    390.62651        1 15625000        0         1999  0.000127936          717            0 
+      84    45597    23070.833        0            0      695       394.25        1 15625000        0         2036  0.000130304          737            0 
+      85    46140    23342.235        0            0      681    397.62353        1 15625000        0         2070   0.00013248          739            0 
+      86    46684    23613.651        0            0      657    400.63953        1 15625000        0         2049  0.000131136          751            0 
+      87    47225    23885.046        0            0      661    403.63218        1 15625000        0         2061  0.000131904          732            0 
+      88    47767    24156.432        0            0      658    406.52273        1 15625000        0         2114  0.000135296          768            0 
+      89    48309    24427.809        0            0      719    410.03371        1 15625000        0         2126  0.000136064          768            0 
+      90    48851    24699.178        0            0      702    413.27778        1 15625000        0         2146  0.000137344          751            0 
+      91    49391    24970.516        0            0      713    416.57143        1 15625000        0         2117  0.000135488          755            0 
+      92    49933    25241.848        0            0      769    420.40217        1 15625000        0         2090   0.00013376          739            0 
+      93    50475    25513.172        0            0      683    423.22581        1 15625000        0         2098  0.000134272          718            0 
+      94    51017    25784.489        0            0      702    426.19149        1 15625000        0         2045   0.00013088          677            0 
+      95    51559      26055.8        0            0      728    429.36842        1 15625000        0         2054  0.000131456          686            0 
+      96    52102    26327.115        0            0      748     432.6875        1 15625000        0         2087  0.000133568          737            0 
+      97    52644    26598.423        0            0      768    436.14433        1 15625000        0         2082  0.000133248          708            0 
+      98    53187    26869.735        0            0      740     439.2449        1 15625000        0         2100    0.0001344          718            0 
+      99    53729     27141.04        0            0      740    442.28283        1 15625000        0         2074  0.000132736          709            0 
+     100    54269     27412.32        0            0      762       445.48        1 15625000        0         2081  0.000133184          698            0 
+Loop time of 122.729 on 1 procs for 100 steps with 54269 particles
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Move    | 0.43487    | 0.43487    | 0.43487    |   0.0 |  0.35
+Coll    | 9.6815     | 9.6815     | 9.6815     |   0.0 |  7.89
+Sort    | 13.047     | 13.047     | 13.047     |   0.0 | 10.63
+Comm    | 0.00017861 | 0.00017861 | 0.00017861 |   0.0 |  0.00
+Modify  | 71.234     | 71.234     | 71.234     |   0.0 | 58.04
+Output  | 28.332     | 28.332     | 28.332     |   0.0 | 23.09
+Other   |            | 8.022e-05  |            |       |  0.00
+
+Particle moves    = 2741232 (2.74M)
+Cells touched     = 4558478 (4.56M)
+Particle comms    = 0 (0K)
+Boundary collides = 80071 (80.1K)
+Boundary exits    = 0 (0K)
+SurfColl checks   = 23208694 (23.2M)
+SurfColl occurs   = 44548 (44.5K)
+Surf reactions    = 0 (0K)
+Collide attempts  = 250 (0.25K)
+Collide occurs    = 161 (0.161K)
+Reactions         = 0 (0K)
+Particles stuck   = 0
+
+Particle-moves/CPUsec/proc: 22335.7
+Particle-moves/step: 27412.3
+Cell-touches/particle/step: 1.66293
+Particle comm iterations/step: 1
+Particle fraction communicated: 0
+Particle fraction colliding with boundary: 0.0292099
+Particle fraction exiting boundary: 0
+Surface-checks/particle/step: 8.46652
+Surface-collisions/particle/step: 0.0162511
+Surf-reactions/particle/step: 0
+Collision-attempts/particle/step: 9.11999e-05
+Collisions/particle/step: 5.87327e-05
+Reactions/particle/step: 0
+
+Particles: 54269 ave 54269 max 54269 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Cells:      1.5625e+07 ave 1.5625e+07 max 1.5625e+07 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+GhostCell: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+EmptyCell: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Surfs:    1004 ave 1004 max 1004 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+GhostSurf: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+adapt_grid interm refine coarsen particle 30 50 cells 3 3 3
+Adapting grid ...
+  13852397 1578345 194570 = cells outside/inside/overlapping surfs
+  194570 = surf cells with 1,2,etc splits
+  7.24584e-05 7.24584e-05 = cell-wise and global flow volume
+  12 cells refined, 0 cells coarsened
+  adapted to 15625312 child grid cells, 13 parent cells
+  CPU time = 18.977 secs
+  adapt/redo percent = 40.0959 59.9041
+Memory usage per proc in Mbytes:
+  particles (ave,min,max) = 6.75 6.75 6.75
+  grid      (ave,min,max) = 2744.35 2744.35 2744.35
+  surf      (ave,min,max) = 0.126389 0.126389 0.126389
+  total     (ave,min,max) = 13242.1 13242.1 13242.1
+Step Np Npave Nexit Nexitave Nscoll Nscollave Nparent Nchild Nsplit c_sumtest c_avetest c_maxtest c_mintest 
+     100    54269            0        0            0        0            0       13 15625312        0         2081 0.00013318134           59            0 
+     101    54808        54808        0            0      794          794       13 15625312        0         2104 0.00013465331           65            0 
+     102    55349      55078.5        0            0      749        771.5       13 15625312        0         2100 0.00013439732           55            0 
+     103    55891    55349.333        0            0      737          760       13 15625312        0         2133 0.00013650927           62            0 
+     104    56432        55620        0            0      775       763.75       13 15625312        0         2111 0.0001351013           58            0 
+     105    56974      55890.8        0            0      822        775.4       13 15625312        0         2090 0.00013375733           65            0 
+     106    57515      56161.5        0            0      786    777.16667       13 15625312        0         2137 0.00013676527           61            0 
+     107    58057    56432.286        0            0      831    784.85714       13 15625312        0         2091 0.00013382133           58            0 
+     108    58596     56702.75        0            0      786          785       13 15625312        0         2097 0.00013420532           67            0 
+     109    59138    56973.333        0            0      829    789.88889       13 15625312        0         2090 0.00013375733           60            0 
+     110    59683      57244.3        0            0      775        788.4       13 15625312        0         2061 0.00013190137           56            0 
+     111    60227    57515.455        0            0      848    793.81818       13 15625312        0         2073 0.00013266935           58            0 
+     112    60769    57786.583        0            0      820          796       13 15625312        0         2080 0.00013311734           53            0 
+     113    61314    58057.923        0            0      866    801.38462       13 15625312        0         2111 0.0001351013           71            0 
+     114    61858    58329.357        0            0      830    803.42857       13 15625312        0         2115 0.0001353573           60            0 
+     115    62398      58600.6        0            0      823    804.73333       13 15625312        0         2095 0.00013407732           63            0 
+     116    62937    58871.625        0            0      822     805.8125       13 15625312        0         2058 0.00013170937           53            0 
+     117    63479    59142.647        0            0      817    806.47059       13 15625312        0         2047 0.00013100538           60            0 
+     118    64022    59413.722        0            0      862    809.55556       13 15625312        0         2035 0.0001302374           57            0 
+     119    64566    59684.895        0            0      879    813.21053       13 15625312        0         2062 0.00013196536           52            0 
+     120    65107        59956        0            0      865        815.8       13 15625312        0         2030 0.00012991741           57            0 
+     121    65648    60227.048        0            0      880    818.85714       13 15625312        0         2018 0.00012914942           61            0 
+     122    66190    60498.091        0            0      858    820.63636       13 15625312        0         2043 0.00013074939           60            0 
+     123    66729        60769        0            0      869    822.73913       13 15625312        0         2075 0.00013279735           56            0 
+     124    67268    61039.792        0            0      872    824.79167       13 15625312        0         2066 0.00013222136           54            0 
+     125    67809     61310.56        0            0      844       825.56       13 15625312        0         2079 0.00013305334           61            0 
+     126    68352    61581.385        0            0      899    828.38462       13 15625312        0         2039 0.00013049339           48            0 
+     127    68894    61852.222        0            0      871    829.96296       13 15625312        0         2049 0.00013113338           55            0 
+     128    69437    62123.107        0            0      938    833.82143       13 15625312        0         2081 0.00013318134           66            0 
+     129    69981    62394.069        0            0      876    835.27586       13 15625312        0         2118 0.00013554929           55            0 
+     130    70523    62665.033        0            0      877    836.66667       13 15625312        0         2125 0.00013599728           53            0 
+     131    71067    62936.065        0            0      862    837.48387       13 15625312        0         2135 0.00013663727           56            0 
+     132    71606        63207        0            0      918          840       13 15625312        0         2078 0.00013298934           51            0 
+     133    72148    63477.939        0            0      885    841.36364       13 15625312        0         2080 0.00013311734           58            0 
+     134    72691    63748.912        0            0      907    843.29412       13 15625312        0         2117 0.00013548529           60            0 
+     135    73232    64019.857        0            0      964    846.74286       13 15625312        0         2090 0.00013375733           67            0 
+     136    73774    64290.806        0            0      916    848.66667       13 15625312        0         2110 0.0001350373           56            0 
+     137    74317    64561.784        0            0      885    849.64865       13 15625312        0         2133 0.00013650927           58            0 
+     138    74860    64832.789        0            0      949    852.26316       13 15625312        0         2114 0.0001352933           53            0 
+     139    75401    65103.769        0            0      925    854.12821       13 15625312        0         2093 0.00013394933           62            0 
+     140    75945      65374.8        0            0      910      855.525       13 15625312        0         2155 0.00013791725           60            0 
+     141    76487    65645.829        0            0      912    856.90244       13 15625312        0         2169 0.00013881323           67            0 
+     142    77029    65916.857        0            0      922    858.45238       13 15625312        0         2196 0.00014054119           60            0 
+     143    77568    66187.814        0            0      896    859.32558       13 15625312        0         2179 0.00013945322           62            0 
+     144    78111    66458.795        0            0      965    861.72727       13 15625312        0         2161 0.00013830124           59            0 
+     145    78654      66729.8        0            0      978    864.31111       13 15625312        0         2163 0.00013842924           61            0 
+     146    79196    67000.804        0            0      915    865.41304       13 15625312        0         2126 0.00013606128           59            0 
+     147    79737    67271.787        0            0      975    867.74468       13 15625312        0         2146 0.00013734126           58            0 
+     148    80279    67542.771        0            0     1003     870.5625       13 15625312        0         2150 0.00013759725           54            0 
+     149    80818    67813.694        0            0      923    871.63265       13 15625312        0         2154 0.00013785325           55            0 
+     150    81357     68084.56        0            0      980        873.8       13 15625312        0         2149 0.00013753325           49            0 
+     151    81901    68355.471        0            0     1017    876.60784       13 15625312        0         2175 0.00013919722           65            0 
+     152    82446    68626.442        0            0      944    877.90385       13 15625312        0         2169 0.00013881323           58            0 
+     153    82988    68897.415        0            0      970    879.64151       13 15625312        0         2179 0.00013945322           58            0 
+     154    83530    69168.389        0            0      872        879.5       13 15625312        0         2178 0.00013938922           61            0 
+     155    84073    69439.382        0            0      920    880.23636       13 15625312        0         2164 0.00013849323           59            0 
+     156    84615    69710.375        0            0      915    880.85714       13 15625312        0         2211 0.00014150117           71            0 
+     157    85160    69981.421        0            0      988    882.73684       13 15625312        0         2198 0.00014066919           61            0 
+     158    85701    70252.448        0            0      986    884.51724       13 15625312        0         2164 0.00013849323           54            0 
+     159    86245    70523.508        0            0     1001    886.49153       13 15625312        0         2167 0.00013868523           55            0 
+     160    86788    70794.583        0            0      975    887.96667       13 15625312        0         2131 0.00013638128           65            0 
+     161    87331    71065.672        0            0      971    889.32787       13 15625312        0         2148 0.00013746926           67            0 
+     162    87873    71336.758        0            0     1018    891.40323       13 15625312        0         2169 0.00013881323           54            0 
+     163    88414    71607.825        0            0     1000    893.12698       13 15625312        0         2194 0.0001404132           59            0 
+     164    88958    71878.922        0            0     1006    894.89062       13 15625312        0         2205 0.00014111718           67            0 
+     165    89498    72149.985        0            0      970    896.04615       13 15625312        0         2251 0.00014406112           57            0 
+     166    90040    72421.045        0            0     1022    897.95455       13 15625312        0         2195 0.00014047719           66            0 
+     167    90584    72692.134        0            0      997    899.43284       13 15625312        0         2142 0.00013708526           60            0 
+     168    91128     72963.25        0            0     1116    902.61765       13 15625312        0         2154 0.00013785325           60            0 
+     169    91668    73234.333        0            0     1057    904.85507       13 15625312        0         2188 0.0001400292           58            0 
+     170    92215    73505.486        0            0     1000    906.21429       13 15625312        0         2160 0.00013823724           57            0 
+     171    92760    73776.676        0            0     1026    907.90141       13 15625312        0         2121 0.00013574129           60            0 
+     172    93300    74047.833        0            0     1057    909.97222       13 15625312        0         2119 0.00013561329           57            0 
+     173    93845    74319.027        0            0     1063    912.06849       13 15625312        0         2109 0.0001349733           50            0 
+     174    94389    74590.243        0            0     1037    913.75676       13 15625312        0         2159 0.00013817324           54            0 
+     175    94932    74861.467        0            0     1028       915.28       13 15625312        0         2185 0.00013983721           59            0 
+     176    95477    75132.724        0            0     1056    917.13158       13 15625312        0         2178 0.00013938922           60            0 
+     177    96020    75403.987        0            0     1096    919.45455       13 15625312        0         2166 0.00013862123           65            0 
+     178    96560    75675.218        0            0     1059    921.24359       13 15625312        0         2155 0.00013791725           66            0 
+     179    97105    75946.481        0            0     1112    923.65823       13 15625312        0         2139 0.00013689327           66            0 
+     180    97646    76217.725        0            0     1088     925.7125       13 15625312        0         2158 0.00013810924           62            0 
+     181    98190    76488.988        0            0     1094    927.79012       13 15625312        0         2160 0.00013823724           58            0 
+     182    98732    76760.244        0            0     1071    929.53659       13 15625312        0         2175 0.00013919722           64            0 
+     183    99275    77031.506        0            0     1082    931.37349       13 15625312        0         2204 0.00014105318           68            0 
+     184    99817    77302.762        0            0     1024    932.47619       13 15625312        0         2230 0.00014271715           68            0 
+     185   100357    77573.988        0            0     1095    934.38824       13 15625312        0         2250 0.00014399712           65            0 
+x     186   100899    77845.209        0            0     1110    936.43023       13 15625312        0         2256 0.00014438112           63            0 
+     187   101443    78116.448        0            0     1081    938.09195       13 15625312        0         2245 0.00014367713           66            0 
+     188   101984     78387.67        0            0     1093    939.85227       13 15625312        0         2260 0.00014463711           65            0 
+     189   102525    78658.876        0            0     1077    941.39326       13 15625312        0         2226 0.00014246116           57            0 
+     190   103064    78930.044        0            0     1086          943       13 15625312        0         2212 0.00014156517           60            0 
+     191   103607     79201.22        0            0     1065    944.34066       13 15625312        0         2230 0.00014271715           52            0 
+     192   104149    79472.391        0            0     1161    946.69565       13 15625312        0         2213 0.00014162917           62            0 
+     193   104690    79743.548        0            0     1107    948.41935       13 15625312        0         2214 0.00014169317           60            0 
+     194   105234    80014.723        0            0     1074    949.75532       13 15625312        0         2184 0.00013977321           55            0 
+     195   105779    80285.926        0            0     1102    951.35789       13 15625312        0         2186 0.00013990121           58            0 
+     196   106318    80557.094        0            0     1094    952.84375       13 15625312        0         2197 0.00014060519           58            0 
+     197   106860    80828.258        0            0     1071    954.06186       13 15625312        0         2208 0.00014130918           58            0 
+     198   107402    81099.418        0            0     1139    955.94898       13 15625312        0         2213 0.00014162917           60            0 
+     199   107942    81370.556        0            0     1177    958.18182       13 15625312        0         2217 0.00014188517           65            0 
+     200   108485      81641.7        0            0     1131       959.91       13 15625312        0         2226 0.00014246116           61            0 
+Loop time of 126.035 on 1 procs for 100 steps with 108485 particles
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Move    | 1.0732     | 1.0732     | 1.0732     |   0.0 |  0.85
+Coll    | 9.9679     | 9.9679     | 9.9679     |   0.0 |  7.91
+Sort    | 13.404     | 13.404     | 13.404     |   0.0 | 10.63
+Comm    | 0.00020679 | 0.00020679 | 0.00020679 |   0.0 |  0.00
+Modify  | 73.009     | 73.009     | 73.009     |   0.0 | 57.93
+Output  | 28.58      | 28.58      | 28.58      |   0.0 | 22.68
+Other   |            | 8.021e-05  |            |       |  0.00
+
+Particle moves    = 8164170 (8.16M)
+Cells touched     = 13659668 (13.7M)
+Particle comms    = 0 (0K)
+Boundary collides = 129746 (0.13M)
+Boundary exits    = 0 (0K)
+SurfColl checks   = 25201645 (25.2M)
+SurfColl occurs   = 95991 (96K)
+Surf reactions    = 0 (0K)
+Collide attempts  = 275 (0.275K)
+Collide occurs    = 177 (0.177K)
+Reactions         = 0 (0K)
+Particles stuck   = 0
+
+Particle-moves/CPUsec/proc: 64777.1
+Particle-moves/step: 81641.7
+Cell-touches/particle/step: 1.67312
+Particle comm iterations/step: 1
+Particle fraction communicated: 0
+Particle fraction colliding with boundary: 0.0158921
+Particle fraction exiting boundary: 0
+Surface-checks/particle/step: 3.08686
+Surface-collisions/particle/step: 0.0117576
+Surf-reactions/particle/step: 0
+Collision-attempts/particle/step: 3.36838e-05
+Collisions/particle/step: 2.16801e-05
+Reactions/particle/step: 0
+
+Particles: 108485 ave 108485 max 108485 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Cells:      1.56253e+07 ave 1.56253e+07 max 1.56253e+07 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+GhostCell: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+EmptyCell: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Surfs:    1004 ave 1004 max 1004 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+GhostSurf: 0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0

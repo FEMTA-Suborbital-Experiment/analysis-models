@@ -1,0 +1,93 @@
+global cellmax 14000
+read_restart restart.* balance rcb cell #gridcut -1.0 #balance rcb cell
+
+echo both
+
+#------------------Global Settings----------------------------------------#
+seed               12345  
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 1.0e50            
+
+#------------------Box and Grid Creation----------------------------------#
+balance_grid       rcb part
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+surf_collide   	   1 diffuse 293.0 0.9
+surf_modify    	   all collide 1
+collide        	   vss water water.vss
+
+#femta region is box right in front of where nozzles are, this takes this region and makes a group of surfaces elements in it (should only be onemitting points since it touches that part)
+#group		   emit surf region femta center 
+
+# old way that matlab script can help on now. Note we will need to do a "dry run" to get all the new surface files after clipping for this to work
+group		   emit surf id 271 273 280 281 285 286 291 292 295 296 300 301 306 307 308 309 329 368 370 372 375 376 378 381 382
+fix            	   in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-7
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 10000 c_press_temp[*] ave one
+dump               press_temp_dump grid all 10000 allPressTemp.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 10000 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 10000 cathodePressTemp.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid interm water press temp
+fix                femtaPress_fix ave/grid interm 1 100 10000 c_femtaPress[*] ave one
+dump               femtaPress_dump grid interm 10000 femtaPressTemp.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 10000 c_nrho[*] ave one
+dump               nrho_dump grid all 10000 allNrho.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 10000 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 10000 cathodeNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid interm water n u v w nrho
+fix                femtaNrho_fix ave/grid interm 1 100 100 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid interm 100 femtaNrho.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+compute 	   test grid interm water n
+
+compute            sumtest reduce sum c_test[1]
+compute            avetest reduce ave c_test[1]
+compute            maxtest reduce max c_test[1]
+compute            mintest reduce min c_test[1]
+
+
+echo both
+
+adapt_grid         interm refine coarsen particle 600 10 cells 3 3 3
+
+#fix                test_adapt adapt 1 interm refine coarsen particle 600 10 cells 3 3 3 
+#fix                test_adapt adapt 1 interm refine coarsen value c_test[1] 600 10 thresh more less cells 2 2 2
+
+#fix                domainGrid_adapt adapt 10 unused_domain refine coarsen particle 1 100  #particle 1 1e5    
+#fix                cathodeGrid_adapt adapt 10 cathode_group refine particle 50 10 region cathode_region all 
+#fix                femtaGrid_adapt adapt 10 interm refine particle 50 10 region eCavity all
+#adapt_grid	    cavityGroup refine surf all 0.0000001 iterate 50 dir 0 0 -1 
+#compute            calcCathParticles grid cathode_group water n
+#fix		    cParticleCount ave/grid cathode_group 10 50 500 c_calcCathParticles[*] ave one 
+#fix		    cath adapt 500 cathode_group refine particle 60 30
+
+#----------------------------Image Dump----------------------------------#
+dump               particle_image image water 2500 particle_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+dump		   grid_image image water 2500 grid_image.*.ppm type type particle no grid proc
+
+
+write_restart     restart2.* 
+#----------------------------Check Emitting Surface IDs------------------#
+#dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+
+#----------------------------Log File Edits------------------------------#
+stats              1
+stats_style        step np npave nexit nexitave nscoll nscollave nparent nchild nsplit c_sumtest c_avetest c_maxtest c_mintest  
+run                50000
+ 

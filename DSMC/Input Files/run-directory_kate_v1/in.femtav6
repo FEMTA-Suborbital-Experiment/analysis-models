@@ -1,0 +1,107 @@
+#------------------Global Settings----------------------------------------#
+seed               12345
+dimension          3
+units              si
+boundary           ro ro o     
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 5.0e5 #5.0e4
+global		   cellmax 14000
+global		   surfmax 700            
+
+#------------------Box and Grid Creation----------------------------------#
+create_box         0 0.02542 0 0.031 -0.041865 0.009761
+create_grid        150 150 150 #261 261 261
+balance_grid       rcb part
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+#species            air.species air  
+
+mixture            water H2O vstream 0 0 -438.3 temp 371.1 nrho 7.15e25 #6.166e25
+#mixture            air N O NO nrho 1.58e19  
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+read_surf	   femtav3.surf scale 0.002 0.002 0.002 clip group femtaSurf typeadd 1
+read_surf	   surfCathode.surf scale 0.0015 0.0015 0.0015 trans 0 0 -0.030865 clip group mainCathode 
+
+region		   cathode_region block 0 0.02542 0 0.031 -0.041365 -0.01324
+group		   cathode_group grid region cathode_region center
+
+# defines region right in front of femta nozzle to refine grid for thrust calcs #
+region		   femta block 0 0.00028 0 0.000001 -1.968504e-05 0
+
+#exahust cavity grid reinment area = ex. cavity region (interm,eCavity) - femta region (see above)
+region		   eCavity block 0 0.0001 0 0.0005 -0.0012 0
+group		   interm grid region eCavity center
+group		   unused_domain grid subtract all interm cathode_group
+
+surf_collide   	   1 diffuse 293.0 0.9
+surf_modify    	   all collide 1
+collide        	   vss water water.vss
+#collide            vss all ../run_directory/air.vss
+
+#femta region is box right in front of where nozzles are, this takes this region and makes a group of surfaces elements in it (should only be onemitting points since it touches that part)
+group		   emit surf region femta center 
+
+fix            	   in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           1E-6
+
+#----------------------------Pressure and Temperature Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 100 100 c_press_temp[*] ave one
+dump               press_temp_dump grid all 100 allPressTemp*.out xc yc zc f_press_temp_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 100 100 c_cathodePress[*] ave one
+dump		   cathodePress_dump grid cathode_group 100 cathodePressTemp*.out xc yc zc f_cathodePress_fix[*]
+
+compute            femtaPress thermal/grid interm water press temp
+fix                femtaPress_fix ave/grid interm 1 100 100 c_femtaPress[*] ave one
+dump               femtaPress_dump grid interm 100 femtaPressTemp*.out xc yc zc f_femtaPress_fix[*]
+
+#----------------------------Number Density Compute and Dump-------------#
+compute            nrho grid all water n u v w nrho
+fix                nrho_fix ave/grid all 1 100 100 c_nrho[*] ave one
+dump               nrho_dump grid all 100 allNrho*.out xc yc zc f_nrho_fix[*]
+
+compute            cathodeNrho grid cathode_group water n u v w nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 100 100 c_cathodeNrho[*] ave one
+dump               cathodeNrho_dump grid cathode_group 100 cathodeNrho*.out xc yc zc xlo ylo zlo xhi yhi zhi f_cathodeNrho_fix[*]
+
+compute            femtaNrho grid interm water n u v w nrho
+fix                femtaNrho_fix ave/grid interm 1 100 100 c_femtaNrho[*] ave one
+dump               femtaNrho_dump grid interm 100 femtaNrho*.out xc yc zc xlo ylo zlo xhi yhi zhi f_femtaNrho_fix[*]
+
+#----------------------------Grid Adaptation-----------------------------#
+compute 	   testint grid interm water n
+compute            testcath grid cathode_group water n
+
+compute            suminterm reduce sum c_testint[1]
+compute            aveinterm reduce ave c_testint[1]
+compute            maxinterm reduce max c_testint[1]
+compute            mininterm reduce min c_testint[1]
+
+compute            sumcath reduce sum c_testcath[1]
+compute            avecath reduce ave c_testcath[1]
+compute            maxcath reduce max c_testcath[1]
+compute            mincath reduce min c_testcath[1]
+#----------------------------Image Dump----------------------------------#
+dump               particle_image image water 2500 particle_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.1 view 90 180 zoom 2
+dump		   grid_image image water 2500 grid_image.*.ppm type type particle no grid proc
+
+
+#write_restart     restart.* 
+#----------------------------Check Emitting Surface IDs------------------#
+#dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v1z v2x v2y v2z v3x v3y v3z
+
+#----------------------------Log File Edits------------------------------#
+stats              1
+stats_style        step np npave nexit nexitave nscoll nscollave nparent c_suminterm c_aveinterm c_maxinterm c_mininterm c_sumcath c_avecath c_maxcath c_mincath 
+
+run 10000 start 0 stop 10000 every 100 "adapt_grid interm refine coarsen particle 30 50 cells 3 3 3 maxlevel 2" #"adapt_grid cathode_group refine coarsen particle 150 200 cells 3 3 3 maxlevel 2" 
+
+#write_restart     restart.*
+ 

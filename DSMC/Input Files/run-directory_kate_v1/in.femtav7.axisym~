@@ -1,0 +1,93 @@
+#------------------Global Settings----------------------------------------#
+seed               23290
+dimension          2
+units              si
+boundary	   or ao p
+
+#------------------Global BCs---------------------------------------------#
+global             fnum 5e6
+
+#------------------Vary Gap Distance--------------------------------------#
+variable	   a equal 0.005       #Gap Length
+print		   "gapLength = $a"
+
+#------------------Constants----------------------------------------------#
+variable	   b equal 0.028125      #Cathode Tube Length
+variable	   c equal 0.015875     #Cathode Tube Height
+variable	   d equal 0.00325      #Cavity Depth
+variable	   e equal -d-a-b-0.005 #Lower Bound of X Domain
+variable	   t equal -d-a
+
+#------------------Box and Grid Creation----------------------------------#
+create_box	   -0.04613 0.0101 0 0.0301 -0.5 0.5
+create_grid        100 100 1 #45 45 1
+balance_grid       rcb part
+
+#------------------Working Fluid: Define the Species and Mixture----------#
+species            water.species H2O
+species		   air.species N2 O2
+mixture            water H2O vstream 0 0 -493.2 temp 398.1 nrho 1.579e26
+mixture		   air N2 O2 nrho 2.9339848e19
+mixture		   water_air H2O N2 O2
+
+#------------------Surface, Water Read In and Definition of Boundaries----#
+read_surf	   2dfemta.surf
+read_surf	   2dcathode.surf trans -0.00825 0 0 invert 
+
+#defines region right in front of femta nozzle to refine grid for thrust calcs
+region		   femta block -2.49e-04 0 0 5e-04 -0.5 0.5
+
+#defines collision model
+surf_collide   	   1 diffuse 293.0 0.9
+surf_modify    	   all collide 1
+collide        	   vss water_air airandwater.vss
+
+#exahust cavity region definition and grid reinment area = ex. cavity region (interm,eCavity) - femta region (see above)
+region		   eCavity block -0.00325 0 0 0.00125 -0.5 0.5
+group		   interm grid region eCavity one
+
+#cathode region definition and grid refinement
+region		   cathode_region block -0.04213 -0.00725 0 0.016875 -0.5 0.5
+group		   cathode_group grid region cathode_region center
+compute		   volume_cathode property/grid cathode_group vol
+adapt_grid         cathode_group refine value c_volume_cathode 1e-10 1e-50   
+
+#femta region is box right in front of where nozzles are, this takes this region and makes a group of surfaces elements in it (should only be onemitting points since it touches that part)
+group		   emit surf id 3
+fix            	   in emit/surf water emit normal yes
+
+#----------------Calculations and Outputs--------------------------------#
+timestep           5E-7
+
+#----------------------------All Data Compute and Dump---#
+compute            press_temp thermal/grid all water press temp
+fix		   press_temp_fix ave/grid all 1 50 50 c_press_temp[*] ave one
+compute            nrho grid all water n u v nrho
+fix                nrho_fix ave/grid all 1 50 50 c_nrho[*] ave one
+dump               press_temp_dump grid all 150 allData.*.out xc yc f_press_temp_fix[*] f_nrho_fix[*]
+
+compute	   	   cathodePress thermal/grid cathode_group water press temp
+fix		   cathodePress_fix ave/grid cathode_group 1 50 50 c_cathodePress[*] ave one
+compute            cathodeNrho grid cathode_group water n u v nrho
+fix                cathodeNrho_fix ave/grid cathode_group 1 50 50 c_cathodeNrho[*] ave one
+dump		   cathodePress_dump grid cathode_group 150 cathodeData.*.out xc yc f_cathodePress_fix[*] f_cathodeNrho_fix[*]
+
+compute            femtaPress thermal/grid interm water press temp
+fix                femtaPress_fix ave/grid interm 1 50 50 c_femtaPress[*] ave one
+compute            femtaNrho grid interm water n u v nrho
+fix                femtaNrho_fix ave/grid interm 1 50 50 c_femtaNrho[*] ave one
+dump               femtaPress_dump grid interm 150 femtaData.*.out xc yc xlo ylo xhi yhi f_femtaPress_fix[*] f_femtaNrho_fix[*]
+
+compute		   conv_sum reduce sum c_nrho[1]
+#----------------------------Image Dump----------------------------------#
+dump              particle_image image water 150 particle_image.*.ppm type type particle yes pdiam 0.0005 sline yes 0.03 zoom 25 axes yes 0.1 0.03
+#dump		   grid_image image water 2500 grid_image.*.ppm type type particle no grid proc
+
+#----------------------------Check Emitting Surface IDs------------------#
+dump		    surf_dump surf all 100000 surfIDs2.out id v1x v1y v2x v2y
+
+#----------------------------Log File Edits------------------------------#
+stats              1
+stats_style        step c_conv_sum np npave nexit nexitave nscoll nscollave nparent nchild nsplit
+#run		   1500
+run                3000 start 0 stop 15000 every 100 "adapt_grid interm refine coarsen particle 30 50 cells 3 3 1 maxlevel 2" 
