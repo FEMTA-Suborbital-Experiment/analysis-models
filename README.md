@@ -1,6 +1,6 @@
 # Analysis Models
 
-This repository currently contains two directories; below are brief explanations:
+This repository currently contains two separate directories. Below are brief explanations:
 
 ## [DSMC][1]
 Contains input files for use with SPARTA, as well as supplementary MATLAB scripts.
